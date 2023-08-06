@@ -8,11 +8,18 @@
 
 #define SUCCESS 0
 #define ERROR 1
+#define START 2
+#define QUIT 3
+#define MAX_TOPICS 50
+#define CLEAR() printf("\033[2J"); printf("\033[;H")
 
 // region global vars
 
 char *server_ip;
 int server_port;
+char *config_path;
+
+char **topics;
 
 // endregion global vars
 
@@ -25,8 +32,8 @@ int flush_stdin() {
 }
 
 void print_ip_info() {
-  printf("IP = %s", server_ip);
-  printf("Port = %d", server_port);
+  printf("IP = %s ", server_ip);
+  printf("Port = %d\n", server_port);
 }
 
 // endregion utils
@@ -37,11 +44,65 @@ void print_ip_info() {
 
 // region game creation
 
+int choose_config() {
+  char path[255];
+  char topic[255];
+  int topicc = MAX_TOPICS;
+  char **temp_topics = malloc(sizeof(char *) * topicc);
+  int topic_inx = 0;
+  FILE *fconfig;
+
+  printf("Config path: ");
+  scanf("%s", path);
+  config_path = path;
+
+  fconfig = fopen(path, "r");
+  char c;
+  int inx = 0;
+  while ((c = fgetc(fconfig) != EOF)) {
+    if (topic_inx >= topicc) {
+      topicc += 10;
+      temp_topics = realloc(temp_topics, topicc);
+    }
+
+    if (c == '\n' || (c == ' ' && inx == 0)) {
+      continue;
+    }
+
+    if (c == ',') {
+      topic[inx++] = '\0';
+      temp_topics[topic_inx] = malloc(
+          sizeof(char) * inx
+        );
+      strcpy(temp_topics[topic_inx++], topic);
+      inx = 0;
+      continue;
+    }
+
+    topic[inx++] = c;
+  }
+
+  // save last topic as well
+  topic[inx++] = '\0';
+  temp_topics[topic_inx] = malloc(
+      sizeof(char) * inx
+      );
+  strcpy(temp_topics[topic_inx++], topic);
+
+  topics = malloc(sizeof(char *) * topic_inx);
+  for (int i = 0; i < topic_inx; i++) {
+    topics[i] = temp_topics[i];
+  }
+  free(temp_topics);
+
+  return SUCCESS;
+}
+
 int poll_and_exec_lobby_command() {
   char cmd = getchar();
   switch (cmd) {
     case 's':
-      return 2;
+      return START;
     case 'p':
       // TODO: list players
       break;
@@ -49,7 +110,7 @@ int poll_and_exec_lobby_command() {
       print_ip_info();
       break;
     case 'c':
-      // TODO: choose config file
+      choose_config();
       break;
     case 'l':
       // TODO: list topics
@@ -61,7 +122,7 @@ int poll_and_exec_lobby_command() {
       // TODO: remove topic
       break;
     case 'x':
-      return 3;
+      return QUIT;
     default:
       break;
   }
@@ -80,7 +141,7 @@ void show_lobby() {
   - [a]dd topic\n\
   - [r]emove topic\n\
   - e[x]it\n\
-");
+> ");
 }
 
 int lobby() {
@@ -90,11 +151,11 @@ int lobby() {
   while (brk == SUCCESS) {
     show_lobby();
     brk = poll_and_exec_lobby_command();
-    printf("\033[2J");
+    CLEAR();
   }
 
   // change brk to SUCCESS if the exit command was inputted
-  if (brk == 3) {
+  if (brk == QUIT) {
     brk = SUCCESS;
   }
 
@@ -126,13 +187,14 @@ int create_game() {
   char strport[5];
   fgets(strport, 5, stdin);
   int port = strtol(strport, NULL, 10);
+  server_port = port;
 
   if (create_server(port) == ERROR) {
     return ERROR;
   }
 
-  printf("\033[2J");
-  printf("Server creation successful!");
+  CLEAR();
+  printf("Server creation successful!\n");
 
   if (get_ip_info(port) == ERROR) {
     return ERROR;
@@ -165,9 +227,11 @@ or [j]oin an existing one? "
     if (create_game() == ERROR) {
       return ERROR;
     }
-    if (lobby() == ERROR) {
-      return ERROR;
+    int action = lobby();
+    if (action == START) {
+      // start game
     }
+    return action; // is either SUCCESS or ERROR
   }
   else if (mode == 'j') {
     join_server();
